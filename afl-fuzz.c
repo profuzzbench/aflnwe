@@ -460,12 +460,36 @@ char *get_test_case(long *fsize)
   if (out_file != NULL)
     fd = open(out_file, O_RDONLY);
 
+  /* Flush the test case before reading it back,
+   * to prevent empty reads (probably subtle timing issues) */
+  fsync(fd);
+
   *fsize = lseek(fd, 0, SEEK_END);
   lseek(fd, 0, SEEK_SET);
 
   /* allocate buffer to read the file */
   char *buf = ck_alloc(*fsize);
-  ck_read(fd, buf, *fsize, "input file");
+
+  int res = read(fd,buf,*fsize);
+
+  if(res!=*fsize) {
+
+    WARNF("Short read from input file (res=%d, len=%d)", res, *fsize);
+
+    int res1 = 0;
+    int retries = 3;
+
+    // try again for few times before giving up
+
+    for(int kk=0; kk<retries && res1 == 0; kk++) {
+	res1 = read(fd,buf,*fsize);
+	sleep(1);
+    }
+
+    if(res1 != *fsize) {
+      RPFATAL(res, "Short read from %s", "input file");
+    }
+  }
 
   return buf;
 }
