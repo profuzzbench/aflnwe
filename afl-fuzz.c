@@ -144,6 +144,9 @@ static s32 out_fd,                    /* Persistent fd for out_file       */
            fsrv_ctl_fd,               /* Fork server control pipe (write) */
            fsrv_st_fd;                /* Fork server status pipe (read)   */
 
+static u8* test_buf;
+static long test_buf_len;
+
 static s32 forksrv_pid,               /* PID of the fork server           */
            child_pid = -1,            /* PID of the fuzzed program        */
            out_dir_fd = -1;           /* FD of the lock file              */
@@ -455,19 +458,15 @@ int parse_net_config(u8* net_config, u8* protocol, u8** ip_address, u32* port)
 
 char *get_test_case(long *fsize)
 {
-  /* open generated file */
-  s32 fd = out_fd;
-  if (out_file != NULL)
-    fd = open(out_file, O_RDONLY);
 
-  *fsize = lseek(fd, 0, SEEK_END);
-  lseek(fd, 0, SEEK_SET);
+  char *buf = ck_alloc(test_buf_len);
 
-  /* allocate buffer to read the file */
-  char *buf = ck_alloc(*fsize);
-  ck_read(fd, buf, *fsize, "input file");
+  memcpy(buf, test_buf, test_buf_len);
+
+  *fsize = test_buf_len;
 
   return buf;
+
 }
 
 int net_send(int sockfd, struct timeval timeout, char *mem, unsigned int len) {
@@ -2786,6 +2785,19 @@ static void write_to_testcase(void* mem, u32 len) {
     lseek(fd, 0, SEEK_SET);
 
   } else close(fd);
+
+  // Save data to memory for later reuse
+
+  if(len > test_buf_len) {
+
+    if(test_buf)
+      ck_free(test_buf);
+
+    test_buf = ck_alloc(len);
+  }
+
+  memcpy(test_buf, mem, len);
+  test_buf_len = len;
 
 }
 
@@ -8325,6 +8337,9 @@ int main(int argc, char** argv) {
   detect_file_args(argv + optind + 1);
 
   if (!out_file) setup_stdio_file();
+
+  test_buf = NULL;
+  test_buf_len = 0;
 
   check_binary(argv[optind]);
 
